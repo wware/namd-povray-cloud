@@ -1,0 +1,33 @@
+/**
+***  Copyright (c) 1995, 1996, 1997, 1998, 1999, 2000 by
+***  The Board of Trustees of the University of Illinois.
+***  All rights reserved.
+**/
+
+module ComputeMsmMgr {
+
+  message MsmInitMsg;
+
+  message GridDoubleMsg {
+    double gdata[];
+  };
+
+  message MsmBlockProxyMsg {
+    char msmBlockProxyData[];
+  };
+
+  group ComputeMsmMgr {
+    entry ComputeMsmMgr(void);
+    entry void initialize(MsmInitMsg *);
+    entry void recvMsmBlockProxy(MsmBlockProxyMsg *);
+    entry void update(CkQdMsg *);
+    entry void addPotential(GridDoubleMsg *);
+  };
+
+  array [3D] MsmBlock {
+    entry MsmBlock(int level);
+    entry void addCharge(GridDoubleMsg *);
+    entry void addPotential(GridDoubleMsg *);
+  };
+
+};
