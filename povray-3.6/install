@@ -1,0 +1,1313 @@
+#! /bin/sh
+# ==================================================================
+# POV-Ray 3.6 - binary Linux version - install script
+# ==================================================================
+# written July 2003 - June 2004 by Christoph Hormann
+# based on very basic install script by Mark Gordon
+# This file is part of POV-Ray and subject to the POV-Ray licence
+# see POVLEGAL.DOC for details.
+# ------------------------------------------------------------------
+# for documentation of available options see the
+# README/README.bin file.
+# ==================================================================
+
+# @@KDE_BEGIN@@
+
+VERSION=3.6
+VER_DIR=povray-$VERSION
+DEFAULT_DIR=/usr/local
+SYSCONFDIR=$DEFAULT_DIR/etc
+
+# ==================================================================
+#    Add read+write path to user povray.conf file
+# ==================================================================
+
+add_readwrite_conf()
+{
+  DIR_NAME=$1
+  CONF_FILE="$HOME/.povray/$VERSION/povray.conf"
+
+  echo "  checking conf file $CONF_FILE"
+
+  if [ ! -f "$CONF_FILE" ] ; then
+		cp -f "$SYSCONFDIR/povray.conf" "$CONF_FILE"
+  fi
+
+  if [ -w "$CONF_FILE" ] ; then
+
+		if grep -E -i "$DIR_NAME" "$CONF_FILE" > /dev/null ; then
+			echo "    - file does not need to be modified"
+		else
+			echo "    - adding new read+write path"
+
+			cp -f "$CONF_FILE" "$CONF_FILE.bak"
+
+			grep -B 1000 -E -i "^\[Permitted Paths\]" "$CONF_FILE.bak" > "$CONF_FILE" 2> /dev/null
+
+			echo ";--- Lines added by POV-Ray $VERSION install script ---" >> "$CONF_FILE"
+			echo "read+write* =  \"$DIR_NAME\"" >> "$CONF_FILE"
+			echo ";---------------------------------------------------" >> "$CONF_FILE"
+
+			grep -A 1000 -E -i "^\[Permitted Paths\]" "$CONF_FILE.bak" | sed "/^\[Permitted Paths\]/d" >> "$CONF_FILE" 2> /dev/null
+
+			rm -f "$CONF_FILE.bak"
+
+		fi
+
+  else
+    echo "Error: could not modify povray.conf"
+  fi
+}
+
+# ==================================================================
+#    Add read path to user povray.conf file
+# ==================================================================
+
+add_read_conf()
+{
+  DIR_NAME=$1
+  CONF_FILE="$HOME/.povray/$VERSION/povray.conf"
+
+  echo "  checking conf file $CONF_FILE"
+
+  if [ ! -f "$CONF_FILE" ] ; then
+		cp -f "$SYSCONFDIR/povray.conf" "$CONF_FILE"
+  fi
+
+  if [ -w "$CONF_FILE" ] ; then
+
+		if grep -E -i "$DIR_NAME" "$CONF_FILE" > /dev/null ; then
+			echo "    - file does not need to be modified"
+		else
+			echo "    - adding new read path"
+
+			cp -f "$CONF_FILE" "$CONF_FILE.bak"
+
+			grep -B 1000 -E -i "^\[Permitted Paths\]" "$CONF_FILE.bak" > "$CONF_FILE" 2> /dev/null
+
+			echo ";--- Lines added by POV-Ray $VERSION install script ---" >> "$CONF_FILE"
+			echo "read* =  \"$DIR_NAME\"" >> "$CONF_FILE"
+			echo ";---------------------------------------------------" >> "$CONF_FILE"
+
+			grep -A 1000 -E -i "^\[Permitted Paths\]" "$CONF_FILE.bak" | sed "/^\[Permitted Paths\]/d" >> "$CONF_FILE" 2> /dev/null
+
+			rm -f "$CONF_FILE.bak"
+
+		fi
+
+  else
+    echo "Error: could not modify povray.conf"
+  fi
+}
+
+# ==================================================================
+#    Determine installation dir from Library_path settings in ini
+# ==================================================================
+
+install_dir()
+{
+  if [ -z "$POVINI" ] ; then
+    test -f "$SYSCONFDIR/povray.ini" && POVINI="$SYSCONFDIR/povray.ini"
+    test -f "$HOME/.povrayrc" && POVINI="$HOME/.povrayrc"
+    test -f "$SYSCONFDIR/povray/$VERSION/povray.ini" && POVINI="$SYSCONFDIR/povray/$VERSION/povray.ini"
+    test -f "$HOME/.povray/$VERSION/povray.ini" && POVINI="$HOME/.povray/$VERSION/povray.ini"
+  fi
+
+  if [ ! -z "$POVINI" ] ; then
+    # this is not a completely failsafe method but it should work in most cases
+    INSTALL_DIR=`grep -E -i "^library_path=.*share/$VER_DIR" "$POVINI" | head -n 1 | sed "s?[^=]*=\"*??;s?/share/$VER_DIR.*??"`
+    echo "$INSTALL_DIR"
+  fi
+}
+
+# ==================================================================
+#    Add file name to install log
+# ==================================================================
+
+log_install()
+{
+  if [ -w "$DEFAULT_DIR/share/$VER_DIR/" ] ; then
+		LOG_NAME="$DEFAULT_DIR/share/$VER_DIR/install.log"
+	else
+    if [ -w "$HOME/.povray/$VERSION/" ] ; then
+			LOG_NAME="$HOME/.povray/$VERSION/install.log"
+		else
+		  return 0
+		fi
+  fi
+
+  if [ -z "$1$2" ] ; then
+		rm -f "$LOG_NAME"
+	fi
+
+	if [ ! -f "$LOG_NAME" ] ; then
+	  echo "# POV-Ray version $VERSION install log" > "$LOG_NAME"
+	  echo "# started `date`" >> "$LOG_NAME"
+	fi
+
+  if [ "$1" = "B" ] ; then
+		FILE_NAME=`echo "$2" | sed "s? ?%?g"`
+    FILE_NAME="$FILE_NAME $3"
+  else 
+		FILE_NAME=`echo "$2" | sed "s? ?%?g"`
+	fi
+
+	echo "$1 $FILE_NAME" >> "$LOG_NAME"
+}
+
+# ==================================================================
+#    install KDE panel entries
+# ==================================================================
+
+kde_install()
+{
+  if [ -z "$1" ] ; then
+    INSTALL_DIR=`install_dir`
+  else
+    INSTALL_DIR="$1"
+  fi
+
+  if [ -z "$INSTALL_DIR" ] ; then
+    echo "------------------------------------------------------"
+    echo "KDE integration NOT successful."
+    echo "The directory where POV-Ray is installed could not be" 
+    echo "determined.  Make sure POV-Ray is correctly installed"
+    echo "on this computer"
+    echo "------------------------------------------------------"
+    return 0
+  fi
+
+  echo "------------------------------------------------------"
+  echo "installing KDE integration for user '$USER'..."
+
+  if [ -z "$KDEHOME" ] ; then 
+    if [ -d "$HOME/.kde" ] ; then 
+      KDEHOME="$HOME/.kde"
+    else
+      echo "could not determine user KDEHOME directory."
+      echo "make sure KDE is correctly installed"
+      return 0
+    fi
+  else
+    if [ ! -d "$KDEHOME" ] ; then
+      echo "user KDEHOME directory ($KDEHOME) does not exist"
+      return 0
+    fi
+  fi
+
+  if [ ! -w "$KDEHOME" ] ; then
+    echo "no write permission for user KDEHOME directory ($KDEHOME)"
+    return 0
+  fi
+
+  test -d "$KDEHOME/share" || mkdir "$KDEHOME/share"
+
+  if [ -d "$INSTALL_DIR/share/$VER_DIR/icons" ] ; then
+
+    echo "  copying POV-Ray icons..."
+
+    test -d "$KDEHOME/share/icons" || mkdir "$KDEHOME/share/icons"
+
+		ICON_SETS="hicolor crystalsvg slick"
+
+		for ICON_SET in $ICON_SETS ; do
+
+			case $ICON_SET in
+				"hicolor")
+					ICON_SET_INTERN="classic"
+					;;
+				"crystalsvg")
+					ICON_SET_INTERN="crystal"
+					;;
+				"slick")
+					ICON_SET_INTERN="slick"
+					;;
+			esac
+
+			test -d "$KDEHOME/share/icons/$ICON_SET" || mkdir "$KDEHOME/share/icons/$ICON_SET"
+
+			ICON_SIZES="16 32 48 64"
+
+			for ICON_SIZE in $ICON_SIZES ; do
+
+				test -d "$KDEHOME/share/icons/$ICON_SET/${ICON_SIZE}x${ICON_SIZE}" || mkdir "$KDEHOME/share/icons/$ICON_SET/${ICON_SIZE}x${ICON_SIZE}"
+				test -d "$KDEHOME/share/icons/$ICON_SET/${ICON_SIZE}x${ICON_SIZE}/mimetypes" || mkdir "$KDEHOME/share/icons/$ICON_SET/${ICON_SIZE}x${ICON_SIZE}/mimetypes"
+				cp -f "$INSTALL_DIR/share/$VER_DIR/icons/file_pov_classic_16.png" "$KDEHOME/share/icons/hicolor/16x16/mimetypes/povsdl_pov.png"
+
+				if [ "$ICON_SET" = "hicolor" ] ; then
+					test -d "$KDEHOME/share/icons/$ICON_SET/${ICON_SIZE}x${ICON_SIZE}/apps" || mkdir "$KDEHOME/share/icons/$ICON_SET/${ICON_SIZE}x${ICON_SIZE}/apps"
+					cp -f "$INSTALL_DIR/share/$VER_DIR/icons/povray_${ICON_SIZE}.png" "$KDEHOME/share/icons/hicolor/${ICON_SIZE}x${ICON_SIZE}/apps/povray.png"
+					log_install "F" "$KDEHOME/share/icons/hicolor/${ICON_SIZE}x${ICON_SIZE}/apps/povray.png"
+				fi
+
+				cp -f "$INSTALL_DIR/share/$VER_DIR/icons/file_pov_${ICON_SET_INTERN}_${ICON_SIZE}.png" "$KDEHOME/share/icons/$ICON_SET/${ICON_SIZE}x${ICON_SIZE}/mimetypes/povsdl_pov.png"
+				cp -f "$INSTALL_DIR/share/$VER_DIR/icons/file_inc_${ICON_SET_INTERN}_${ICON_SIZE}.png" "$KDEHOME/share/icons/$ICON_SET/${ICON_SIZE}x${ICON_SIZE}/mimetypes/povsdl_inc.png"
+				log_install "F" "$KDEHOME/share/icons/$ICON_SET/${ICON_SIZE}x${ICON_SIZE}/mimetypes/povsdl_pov.png"
+				log_install "F" "$KDEHOME/share/icons/$ICON_SET/${ICON_SIZE}x${ICON_SIZE}/mimetypes/povsdl_inc.png"
+
+			done
+
+		done
+
+    ICON_FILE="povray.png"
+
+    echo "  generating POV-Ray file types..."
+
+    test -d "$KDEHOME/share/mimelnk/text" || mkdir -p "$KDEHOME/share/mimelnk/text"
+
+    echo "[Desktop Entry]
+Comment=POV-Ray script file
+Icon=povsdl_pov
+Type=MimeType
+MimeType=text/x-povray-script
+Patterns=*.pov;*.POV;
+" > "$KDEHOME/share/mimelnk/text/x-povray-script.desktop"
+
+		log_install "F" "$KDEHOME/share/mimelnk/text/x-povray-script.desktop"
+
+    echo "[Desktop Entry]
+Comment=POV-Ray include file
+Icon=povsdl_inc
+Type=MimeType
+MimeType=text/x-povray-include
+Patterns=*.inc;*.INC;
+" > "$KDEHOME/share/mimelnk/text/x-povray-include.desktop"
+
+		log_install "F" "$KDEHOME/share/mimelnk/text/x-povray-include.desktop"
+
+  else
+
+    echo "Could not find required files, make sure POV-Ray $VERSION is correctly installed"
+    echo ""
+
+  fi
+
+  echo "  installing main POV-Ray $VERSION submenu..."
+
+  if [ ! -d "$KDEHOME/share/applnk" ] ; then 
+		mkdir -p "$KDEHOME/share/applnk"
+    KDE_PANEL_DIR="$KDEHOME/share/applnk/$VER_DIR"
+  else
+    KDE_PANEL_DIR="$KDEHOME/share/applnk/$VER_DIR"
+  fi
+
+  if [ -d "$KDE_PANEL_DIR" ] ; then 
+    rm -rf $KDE_PANEL_DIR/*
+  else
+    mkdir "$KDE_PANEL_DIR"
+  fi
+
+	log_install "F" "$KDE_PANEL_DIR"
+
+  echo "[Desktop Entry]
+Name=POV-Ray $VERSION
+Icon=povray
+" > "$KDE_PANEL_DIR/.directory"
+
+  echo "  installing ini file link..."
+
+  if [ -f "$HOME/.povray/$VERSION/povray.ini" ] ; then
+    POVINI="$HOME/.povray/$VERSION/povray.ini"
+    echo "[Desktop Entry]
+Type=Application
+Exec=kwrite $POVINI
+Icon=txt
+Name=edit user povray ini file (~/.povray/$VERSION/povray.ini)
+" > "$KDE_PANEL_DIR/ini.desktop"
+  else
+    POVINI="$SYSCONFDIR/povray/$VERSION/povray.ini"
+    echo "[Desktop Entry]
+Type=Application
+Exec=kdesu kwrite $POVINI
+Icon=txt
+Name=edit global povray.ini file
+" > "$KDE_PANEL_DIR/ini.desktop"
+  fi
+
+  echo "  installing configuration file link..."
+
+  if [ -f "$HOME/.povray/$VERSION/povray.conf" ] ; then
+    POVCONF="$HOME/.povray/$VERSION/povray.conf"
+    echo "[Desktop Entry]
+Type=Application
+Exec=kwrite $POVCONF
+Icon=txt
+Name=edit IO-restrictions configuration file (~/.povray/$VERSION/povray.conf)
+" > "$KDE_PANEL_DIR/conf_user.desktop"
+  fi
+
+  if [ -f "$SYSCONFDIR/povray/$VERSION/povray.conf" ] ; then
+    POVCONF="$SYSCONFDIR/povray/$VERSION/povray.conf"
+    echo "[Desktop Entry]
+Type=Application
+Exec=kdesu kwrite $POVCONF
+Icon=txt
+Name=edit global IO-restrictions configuration file
+" > "$KDE_PANEL_DIR/conf_sys.desktop"
+  fi
+
+  echo "  installing documentation link..."
+
+  echo "[Desktop Entry]
+Type=Application
+Exec=konqueror $INSTALL_DIR/share/doc/$VER_DIR/html/index.html
+Icon=html
+Name=Documentation
+" > "$KDE_PANEL_DIR/docu.desktop"
+
+  echo "[Desktop Entry]
+Type=Application
+Exec=konqueror $INSTALL_DIR/share/doc/$VER_DIR/html/povlegal.html
+Icon=html
+Name=The POV-Ray licence (POVLEGAL.DOC)
+" > "$KDE_PANEL_DIR/povlegal.desktop"
+
+  echo "[Desktop Entry]
+Type=Application
+Exec=povray -benchmark ; read
+Icon=exec
+Name=run benchmark
+Terminal=1
+" > "$KDE_PANEL_DIR/benchmark.desktop"
+
+  if [ -d "$INSTALL_DIR/share/$VER_DIR/scripts/" ] ; then
+
+    echo "  installing sample scene render links..."
+
+    if [ -w "$INSTALL_DIR/share/$VER_DIR" ] ; then 
+      SAMPLE_RESULTS_DIR="$INSTALL_DIR/share/$VER_DIR"
+    else
+      SAMPLE_RESULTS_DIR="$HOME/$VER_DIR"
+      test -d "$SAMPLE_RESULTS_DIR" || mkdir "$SAMPLE_RESULTS_DIR"
+      echo "This directory is generated by the POV-Ray $VERSION install script 
+to contain the sample scene renders generated by the corresponding
+entries in the KDE panel menu." > "$SAMPLE_RESULTS_DIR/README" 
+    fi
+    
+    test -d "$SAMPLE_RESULTS_DIR/samples" || mkdir "$SAMPLE_RESULTS_DIR/samples"
+    test -d "$SAMPLE_RESULTS_DIR/portfolio" || mkdir "$SAMPLE_RESULTS_DIR/portfolio"
+
+    echo "Here you can find the rendered sample animations after running the sample animations render script" > "$SAMPLE_RESULTS_DIR/samples/animations.html"    
+    echo "Here you can find the rendered sample scenes after running the sample scenes render script" > "$SAMPLE_RESULTS_DIR/samples/stills.html"   
+    echo "Here you can find the portfolio after running the portfolio render script" > "$SAMPLE_RESULTS_DIR/portfolio/index.html"   
+
+    if [ -d "$KDE_PANEL_DIR/samples" ] ; then 
+      rm -rf $KDE_PANEL_DIR/samples*
+    else
+      mkdir "$KDE_PANEL_DIR/samples"
+    fi
+
+    echo "[Desktop Entry]
+Name=Sample scenes
+Icon=folder
+" > "$KDE_PANEL_DIR/samples/.directory"
+
+    echo "[Desktop Entry]
+Type=Application
+Exec=$INSTALL_DIR/share/$VER_DIR/scripts/allscene.sh -o $SAMPLE_RESULTS_DIR/samples -h $SAMPLE_RESULTS_DIR/samples/stills.html
+Icon=exec
+Name=render sample scenes (stills)
+Terminal=1
+" > "$KDE_PANEL_DIR/samples/render_stills.desktop"
+
+    echo "[Desktop Entry]
+Type=Application
+Exec=$INSTALL_DIR/share/$VER_DIR/scripts/allanim.sh -o $SAMPLE_RESULTS_DIR/samples -h $SAMPLE_RESULTS_DIR/samples/animations.html
+Icon=exec
+Name=render sample scenes (animations)
+Terminal=1
+" > "$KDE_PANEL_DIR/samples/render_animations.desktop"
+
+    echo "[Desktop Entry]
+Type=Application
+Exec=$INSTALL_DIR/share/$VER_DIR/scripts/portfolio.sh -o $SAMPLE_RESULTS_DIR/portfolio
+Icon=exec
+Name=render portfolio
+Terminal=1
+" > "$KDE_PANEL_DIR/samples/render_portfolio.desktop"
+
+    echo "[Desktop Entry]
+Type=Application
+Exec=konqueror $SAMPLE_RESULTS_DIR/portfolio/index.html
+Icon=html
+Name=View portfolio
+" > "$KDE_PANEL_DIR/samples/view_portfolio.desktop"
+
+    echo "[Desktop Entry]
+Type=Application
+Exec=konqueror $SAMPLE_RESULTS_DIR/samples/animations.html
+Icon=imagegallery
+Name=Sample scene gallery (animations)
+" > "$KDE_PANEL_DIR/samples/animations.desktop"
+
+    echo "[Desktop Entry]
+Type=Application
+Exec=konqueror $SAMPLE_RESULTS_DIR/samples/stills.html
+Icon=imagegallery
+Name=Sample scene gallery (stills)
+" > "$KDE_PANEL_DIR/samples/stills.desktop"
+
+    echo "  modifying povray.conf..."
+		add_readwrite_conf "$SAMPLE_RESULTS_DIR"
+
+  else
+
+    echo "Could not find required files, make sure POV-Ray $VERSION is correctly installed"
+    echo ""
+
+  fi
+
+  # needs an extra invitation
+	if [ -d "$KDEHOME/share/applnk-redhat" ] ; then 
+    KDE_RH_PANEL_DIR="$KDEHOME/share/applnk-redhat/$VER_DIR"
+		if [ -L "$KDE_RH_PANEL_DIR" ] ; then 
+		  rm "$KDE_RH_PANEL_DIR"
+		fi
+		if [ -d "$KDE_RH_PANEL_DIR" ] ; then 
+		  rm -rf "$KDE_RH_PANEL_DIR"
+		fi
+		ln -s "$KDE_PANEL_DIR" "$KDE_RH_PANEL_DIR"
+		log_install "F" "$KDE_RH_PANEL_DIR"
+  fi
+
+  echo "Finished installing KDE panel entries"
+  echo "------------------------------------------------------"
+  echo ""
+
+  return 1
+}
+
+# @@KDE_END@@
+
+# ==================================================================
+#    Add Library_Path lines to ini file when necessary
+# ==================================================================
+
+add_libpath_ini()
+{
+  DIR_NAME=$1
+  INI_FILE=$2
+
+  echo "  checking ini file $INI_FILE"
+
+  if grep -E -i "^library_path=\"*$DIR_NAME/share/$VER_DIR" "$INI_FILE" > /dev/null ; then
+    echo "    - file does not need to be modified"
+  else
+    echo "    - adding new Library_Path settings"
+
+    cp -f "$INI_FILE" "$INI_FILE.bak"
+
+    grep -B 1000 -E -i "^library_path" "$INI_FILE.bak" | sed '/^[Ll][Ii][Bb][Rr][Aa][Rr][Yy]_[Pp][Aa][Tt][Hh]=/,$ { d; }'  > "$INI_FILE" 2> /dev/null
+
+    echo ";--- Lines added by POV-Ray $VERSION install script ---" >> "$INI_FILE"
+    echo "Library_Path=\"$DIR_NAME/share/$VER_DIR\"" >> "$INI_FILE"
+    echo "Library_Path=\"$DIR_NAME/share/$VER_DIR/ini\"" >> "$INI_FILE"
+    echo "Library_Path=\"$DIR_NAME/share/$VER_DIR/include\"" >> "$INI_FILE"
+    echo ";---------------------------------------------------" >> "$INI_FILE"
+    echo "" >> "$INI_FILE"
+
+    grep -A 1000 -E -i "^library_path" "$INI_FILE.bak" >> "$INI_FILE" 2> /dev/null
+
+		rm -f "$INI_FILE.bak"
+
+  fi
+}
+
+# ==================================================================
+#    uninstall - delete all files listed in install log
+#                try to restore backups made during install
+# ==================================================================
+
+uninstall()
+{
+  if [ -w "$DEFAULT_DIR/share/$VER_DIR/install.log" ] ; then
+		LOG_NAME="$DEFAULT_DIR/share/$VER_DIR/install.log"
+	else
+    if [ -w "$HOME/.povray/$VERSION/install.log" ] ; then
+			LOG_NAME="$HOME/.povray/$VERSION/install.log"
+		else
+      echo "------------------------------------------------------"
+      echo "Could not find the install log"
+      echo "make sure you run uninstall as the same user who" 
+      echo "installed POV-Ray $VERSION."
+      echo "------------------------------------------------------"
+      return 0
+		fi
+  fi
+
+  echo "  The uninstall function will remove POV-Ray $VERSION"
+  echo "  from this computer.  Make sure you run it as the"
+  echo "  same user who installed POV-Ray."
+  echo ""
+  echo "  Any changes made to the installed files (sample scenes,"
+  echo "  include files etc. will get lost, the configuration"
+  echo "  files will not be removed."
+  echo ""
+  read -p "Press CTRL-C to abort or any other key to start " -n 1
+
+  echo ""
+  echo "------------------------------------------------------"
+  echo "uninstalling POV-Ray $VERSION..."
+
+  echo "  removing created files..."
+
+	FILE_LIST=`cat "$LOG_NAME" | sed "/^#/d" | sed "/^[^F]/d" | cut -d " " -f 2 | xargs`
+
+  for FILE_NAME in $FILE_LIST ; do
+    FILE_NAME2=`echo "$FILE_NAME" | sed "s?%? ?g"`
+		echo "    - $FILE_NAME2"
+		if [ -z "$1" ] ; then
+		  rm -r -f "$FILE_NAME2"
+    fi
+	done
+
+  echo "  restoring backups made during install..."
+
+	FILE_LIST=`cat "$LOG_NAME" | sed "/^#/d" | sed "/^[^B]/d" | cut -d " " -f 2- | sed "s? ?#?g" | xargs`
+
+  for FILE_NAME in $FILE_LIST ; do
+    FILE_NAME2=`echo "$FILE_NAME" | sed "s?%? ?g"`
+		FILE_NAME3=`echo "$FILE_NAME2" | sed "s?#? -> ?g"`
+		FILE_NAME4=`echo "$FILE_NAME2" | sed "s?#? ?g"`
+		FILE_NAME5=`echo "$FILE_NAME2" | cut -d "#" -f 1`
+		echo "    - $FILE_NAME3"
+		if [ -z "$1" ] ; then
+		  cp -r -f $FILE_NAME4
+			rm -r -f $FILE_NAME5 
+    fi
+	done
+
+  if [ -z "$1" ] ; then
+   rm -f "$LOG_NAME"
+  fi
+
+  echo "Finished uninstalling POV-Ray $VERSION"
+  echo "------------------------------------------------------"
+  echo ""
+
+  return 1
+
+}
+
+# ==================================================================
+#    run a test render to verify installation
+# ==================================================================
+
+test_render()
+{
+  DIR=`pwd`
+	cd "$HOME"
+	povray -iscenes/advanced/biscuit.pov -f +v +p -w320 -h240 +a0.3 $1
+	cd "$DIR"
+
+  return 1
+}
+
+# ==================================================================
+#    update user configuration
+# ==================================================================
+
+user_install()
+{
+  if [ -z "$1" ] ; then
+    INSTALL_DIR=`install_dir`
+  else
+    INSTALL_DIR="$1"
+  fi
+
+  POVINI=
+
+  if [ -z "$INSTALL_DIR" ] ; then
+    echo "------------------------------------------------------"
+    echo "user configuration update NOT successful."
+    echo "The directory where POV-Ray is installed could not be" 
+    echo "determined.  Make sure POV-Ray is correctly installed"
+    echo "on this computer"
+    echo "------------------------------------------------------"
+    return 0
+  fi
+
+  echo "------------------------------------------------------"
+  echo "updating configuration for user '$USER'..."
+
+  if [ -f "$HOME/.povray/$VERSION/povray.ini" ] ; then
+    echo "  creating backup of old povray.ini file as povray.ini.old.`date +%Y-%m-%d`"
+    cp "$HOME/.povray/$VERSION/povray.ini" "$HOME/.povray/$VERSION/povray.ini.old.`date +%Y-%m-%d`" 
+    INI_MODE=1
+  else
+    test -d "$HOME/.povray" || mkdir "$HOME/.povray"
+    test -d "$HOME/.povray/$VERSION" || mkdir "$HOME/.povray/$VERSION"
+
+    if [ -f "$HOME/.povrayrc" ] ; then
+      echo "  copying .povrayrc file from older version of POV-Ray"
+      cp "$HOME/.povrayrc" "$HOME/.povray/$VERSION/povray.ini" 
+      INI_MODE=2
+    else
+      if [ -f "$SYSCONFDIR/povray/$VERSION/povray.ini" ] ; then
+        echo "  copying system povray.ini"
+        cp "$SYSCONFDIR/povray/$VERSION/povray.ini" "$HOME/.povray/$VERSION/povray.ini" 
+        INI_MODE=3          
+      else
+        if [ -f "$SYSCONFDIR/povray.ini" ] ; then
+          echo "  copying old system povray.ini"
+          cp "$SYSCONFDIR/povray.ini" "$HOME/.povray/$VERSION/povray.ini" 
+          INI_MODE=4
+        else
+          if [ -f "./povray.ini" ] ; then
+            echo "  installing new povray.ini"
+            cat ./povray.ini | sed "s?Library_Path=$DEFAULT_DIR/share/$VER_DIR?Library_Path=$BASEDIR/share/$VER_DIR?g" > "$HOME/.povray/$VERSION/povray.ini"
+            INI_MODE=5
+          else
+            # should not happen
+            INI_MODE=0
+            return 0
+          fi
+        fi
+      fi
+    fi
+  fi
+
+  echo "  updating povray.ini file..."
+
+  add_libpath_ini "$INSTALL_DIR" "$HOME/.povray/$VERSION/povray.ini"
+
+  echo "  updating povray.conf file..."
+
+  if [ ! -f "$HOME/.povray/$VERSION/povray.conf" ] ; then
+    if [ -f "$SYSCONFDIR/povray/$VERSION/povray.conf" ] ; then
+      echo "  copying system povray.conf"
+      test -d "$HOME/.povray" || mkdir "$HOME/.povray"
+      test -d "$HOME/.povray/$VERSION" || mkdir "$HOME/.povray/$VERSION"
+      cp "$SYSCONFDIR/povray/$VERSION/povray.conf" "$HOME/.povray/$VERSION/povray.conf"
+      CONF_MODE=3
+    else
+      if [ -f "./povray.conf" ] ; then
+        echo "  installing new povray.conf"
+        test -d "$HOME/.povray" || mkdir "$HOME/.povray"
+        test -d "$HOME/.povray/$VERSION" || mkdir "$HOME/.povray/$VERSION"
+        cp ./povray.conf "$HOME/.povray/$VERSION/povray.conf"
+        CONF_MODE=5
+      else
+        echo "  Warning: povray.conf template not found"
+        echo "           i/o restrictions will be disabled"
+        CONF_MODE=0
+      fi
+    fi
+  else
+		if echo "$INSTALL_DIR" | grep "$HOME"  > /dev/null ; then
+			if [ -f "./povray.conf" ] ; then
+				echo "  a user povray.conf file already exists."
+				echo "  copying the default version as povray.conf.new"
+				cp ./povray.conf "$HOME/.povray/$VERSION/povray.conf.new"
+				CONF_MODE=6
+			fi
+		else
+			echo "  a user povray.conf file already exists."
+			add_read_conf "$INSTALL_DIR/share/$VER_DIR/scenes" 
+			add_read_conf "$INSTALL_DIR/share/$VER_DIR/include"
+			if [ -f "./povray.conf" ] ; then
+				cp ./povray.conf "$HOME/.povray/$VERSION/povray.conf.new"
+			fi
+      CONF_MODE=7
+    fi
+  fi
+
+  echo "Finished updating configuration"
+  echo "------------------------------------------------------"
+  echo ""
+
+  case $INI_MODE in
+    "1")
+      echo "It seems you have had POV-Ray 3.6 installed previously."
+      echo "The installation has updated the existing povray.ini file."
+      echo ""
+      echo "You should check if the new ini file:"
+      echo ""
+      echo "  ~/.povray/$VERSION/povray.ini"
+      echo ""
+      echo "correctly reflects your configuration."
+      ;;
+    "2")
+      echo "An older version of POV-Ray seems to have been previously"
+      echo "installed on this system.  The installation has copied the"
+      echo "old .povrayrc file and updated it for the new installation."
+      echo ""
+      echo "You should check if the new ini file:"
+      echo ""
+      echo "  ~/.povray/$VERSION/povray.ini"
+      echo ""
+      echo "correctly reflects your configuration."
+      ;;
+    "3")
+      echo "POV-Ray 3.6 seems to be installed system-wide.  The system"
+      echo "povray.ini has been copied and updated."
+      echo ""
+      echo "You should check if the new ini file:"
+      echo ""
+      echo "  ~/.povray/$VERSION/povray.ini"
+      echo ""
+      echo "correctly reflects your configuration."
+      ;;
+    "4")
+      echo "A system-wide ini file from an older version of POV-Ray"
+      echo "has been found and was copied and updated."
+      echo ""
+      echo "You should check if the new ini file:"
+      echo ""
+      echo "  ~/.povray/$VERSION/povray.ini"
+      echo ""
+      echo "correctly reflects your configuration."
+      ;;
+    "5")
+      echo "POV-Ray does not seem to have been previously installed"
+      echo "on this system.  The installation created a default"
+      echo "povray.ini at:"
+      echo ""
+      echo "  $BASEDIR/etc/povray/$VERSION/povray.ini"
+      echo ""
+      echo "which can be modified for individual requirements."
+      ;;
+  esac
+
+  echo ""
+
+  case $CONF_MODE in
+    "3")
+      echo "A user i/o restrictions configuation file has been copied"
+      echo "from the system-wide version."
+      echo ""
+      echo "You should check if the new file:"
+      echo ""
+      echo "  ~/.povray/$VERSION/povray.conf"
+      echo ""
+      echo "correctly reflects your configuration.  If you only want"
+      echo "to use the system file you can also delete this."
+      ;;
+    "5")
+      echo "A new i/o restrictions configuation file has been created:"
+      echo ""
+      echo "  ~/.povray/$VERSION/povray.conf"
+      echo ""
+      echo "See the documentation for how to customize the settings."
+      ;;
+    "6")
+      echo "An existing povray.conf file has been found and was left"
+      echo "as it is.  The default file has been copied as:"
+      echo ""
+      echo "  ~/.povray/$VERSION/povray.conf.new"
+      echo ""
+      echo "for reference."
+      ;;
+    "7")
+      echo "An existing povray.conf file has been found and was modified"
+      echo "for the new configuration.  The default file has been" 
+      echo "copied as:"
+      echo ""
+      echo "  ~/.povray/$VERSION/povray.conf.new"
+      echo ""
+      echo "for reference. You should check if the modified file:"
+      echo ""
+      echo "  ~/.povray/$VERSION/povray.conf"
+      echo ""
+      echo "correctly reflects your configuration."
+      ;;
+  esac
+
+  echo ""
+  echo "------------------------------------------------------"
+  echo ""
+
+  return 1
+}
+
+# ==================================================================
+#    update system configuration
+# ==================================================================
+
+sys_install()
+{
+  # don't call without parameter for first time install
+  if [ -z "$1" ] ; then
+    INSTALL_DIR=`install_dir`
+  else
+    INSTALL_DIR="$1"
+  fi
+
+  POVINI=
+
+  if [ -z "$INSTALL_DIR" ] ; then
+    echo "------------------------------------------------------"
+    echo "system configuration update NOT successful."
+    echo "The directory where POV-Ray is installed could not be" 
+    echo "determined.  Make sure POV-Ray is correctly installed"
+    echo "on this computer"
+    echo "------------------------------------------------------"
+    return 0
+  fi
+
+  echo "------------------------------------------------------"
+  echo "updating system level configuration..."
+
+  if [ ! -d "$BASEDIR/etc/povray/$VERSION" ] ; then
+    echo "  creating directory $BASEDIR/etc/povray/$VERSION..."
+    mkdir -p "$BASEDIR/etc/povray/$VERSION"
+  fi
+  if [ ! -f "$BASEDIR/etc/povray/$VERSION/povray.ini" ] ; then
+    if [ -f "$BASEDIR/etc/povray.ini" ] ; then
+      echo "  copying povray.ini file from older version of POV-Ray"
+      cp -f "$BASEDIR/etc/povray.ini" "$BASEDIR/etc/povray/$VERSION/povray.ini"
+      INI_MODE=2
+    else
+      echo "  installing new main POV-Ray ini file..."
+      cp -f ./povray.ini "$BASEDIR/etc/povray/$VERSION/"
+      INI_MODE=5
+    fi
+  else
+    echo "  creating backup of old povray.ini file as povray.ini.old.`date +%Y-%m-%d`"
+    cp "$BASEDIR/etc/povray/$VERSION/povray.ini" "$BASEDIR/etc/povray/$VERSION/povray.ini.old.`date +%Y-%m-%d`" 
+    INI_MODE=1
+  fi
+
+  echo "  updating main POV-Ray ini file..."
+  add_libpath_ini "$BASEDIR" "$BASEDIR/etc/povray/$VERSION/povray.ini"
+
+  chmod 644 "$BASEDIR/etc/povray/$VERSION/povray.ini"
+
+  if [ ! -f "$BASEDIR/etc/povray/$VERSION/povray.conf" ] ; then
+    echo "  installing POV-Ray configuration file..."
+    cp -f ./povray.conf "$BASEDIR/etc/povray/$VERSION/povray.conf"
+    chmod 644 "$BASEDIR/etc/povray/$VERSION/povray.conf"
+    CONF_MODE=5
+  else
+    echo "  a system povray.conf file already exists."
+    echo "  copying the default version as povray.conf.new"
+    cp -f ./povray.conf "$BASEDIR/etc/povray/$VERSION/povray.conf.new"
+    chmod 644 "$BASEDIR/etc/povray/$VERSION/povray.conf.new"
+    CONF_MODE=6
+    #echo "  creating backup from old POV-Ray configuration file as povray.conf.old"
+    #mv -f "$BASEDIR/etc/povray/$VERSION/povray.conf" "$BASEDIR/etc/povray/$VERSION/povray.conf.old"
+    #echo "  creating new $BASEDIR/etc/povray/$VERSION/povray.conf"
+    #cp -f ./povray.conf "$BASEDIR/etc/povray/$VERSION/povray.conf"
+    #chmod 644 "$BASEDIR/etc/povray/$VERSION/povray.conf"
+  fi
+
+  echo "Finished updating configuration"
+  echo "------------------------------------------------------"
+  echo ""
+
+  case $INI_MODE in
+    "1")
+      echo "POV-Ray 3.6 has seemingly already been installed on this"
+      echo "system before.  The installation has updated the existing"
+      echo "povray.ini file."
+      echo ""
+      echo "You should check if the new ini file:"
+      echo ""
+      echo "  $BASEDIR/etc/povray/$VERSION/povray.ini"
+      echo ""
+      echo "correctly reflects your configuration."
+      ;;
+    "2")
+      echo "A previous installation of POV-Ray has been found on this"
+      echo "system.  The installation has copied the old povray.ini"
+      echo "file and updated it for the new installation."
+      echo ""
+      echo "You should check if the new ini file:"
+      echo ""
+      echo "  $BASEDIR/etc/povray/$VERSION/povray.ini"
+      echo ""
+      echo "correctly reflects your configuration."
+      ;;
+    "5")
+      echo "POV-Ray does not seem to have been previously installed"
+      echo "on this system.  The installation created a default"
+      echo "povray.ini at:"
+      echo ""
+      echo "  $BASEDIR/etc/povray/$VERSION/povray.ini"
+      echo ""
+      echo "which can be modified for individual requirements."
+      ;;
+  esac
+
+  echo ""
+
+  case $CONF_MODE in
+    "5")
+      echo "A new i/o restrictions configuation file has been created:"
+      echo ""
+      echo "  $BASEDIR/etc/povray/$VERSION/povray.conf"
+      echo ""
+      echo "See the documentation for how to customize the settings."
+      ;;
+    "6")
+      echo "An existing povray.conf file has been found and was left"
+      echo "as it is.  The default file has been copied as:"
+      echo ""
+      echo "  $BASEDIR/etc/povray/$VERSION/povray.conf.new"
+      echo ""
+      echo "for reference."
+      ;;
+  esac
+
+  echo ""
+  echo "------------------------------------------------------"
+  echo ""
+  echo "  The install script will now run a short test render"
+  echo "  to check if POV-Ray is correctly configured."
+  echo "  This test render will be without display since this"
+  echo "  is will often not work correctly in superuser mode."
+  echo ""
+  echo "  Type 'R' to run the test"
+  echo "  Type 'S' to skip it."
+  echo ""
+  read -p "Your choice ([R]/S): " -n 1 INPUT
+
+  echo ""
+
+  case $INPUT in
+    "s" | "S")
+      echo ""
+      echo "  skipping test render..."
+    ;;
+    *)
+      echo ""
+      echo "  running test render..."
+			test_render "-d"
+    ;;
+  esac
+
+  echo ""
+  echo "------------------------------------------------------"
+  echo ""
+
+  return 1
+}
+
+# ==================================================================
+
+
+echo ""
+echo "POV-Ray $VERSION installation"
+echo "=========================="
+echo ""
+
+
+# ==================================================================
+#    Check machine type
+# ==================================================================
+
+case $1 in
+  --n* | -n*)
+    echo "skipping architecture compatibility test."
+    PARAMETER=$2
+    ;;
+  *)
+    SYSNAME=`uname -s`
+    ARCHNAME=`uname -m`
+
+    MACHINE=
+
+    case $ARCHNAME in
+      i?86* | athlon* )
+        case $SYSNAME in
+          Linux | linux) MACHINE=Linux_x86 ;;
+        esac
+      ;;
+    esac
+
+    if [ -z "$MACHINE" ] ; then
+      echo "This machine does not seem to be a Linux PC."
+      echo "This version of POV-Ray only runs on x86 Linux machines."
+      echo "You can obtain a version appropriate for your architecture"
+      echo "on http://www.povray.org/"
+      echo ""
+      echo "If you want to force an installation you can use"
+      echo ""
+      echo "  install -no-arch-check"
+      echo ""
+      exit
+    fi
+
+    PARAMETER=$1
+    ;;
+esac
+
+
+# ==================================================================
+#    KDE icon installation
+# ==================================================================
+
+case $PARAMETER in
+  kde* | KDE* | Kde* )
+
+    kde_install
+
+    exit
+    ;;
+
+  user* | USER* | User* )
+
+    user_install
+
+    exit
+    ;;
+
+  uninstall* | UNINSTALL* | Uninstall* )
+
+    uninstall
+
+    exit
+    ;;
+
+#  utest* | UTEST* | Utest* )
+#
+#    uninstall "TEST"
+#
+#    exit
+#    ;;
+
+  test* | TEST* | Test* )
+
+    test_render "+d"
+
+    exit
+    ;;
+
+esac
+
+# ==================================================================
+#    Obtain custom directory name when necessary
+# ==================================================================
+
+if [ ! -w "$DEFAULT_DIR" ] ; then
+  echo "You need to have root privileges to install POV-Ray $VERSION"
+  echo "in the default location ($DEFAULT_DIR)."
+  echo ""
+  echo "You can also install POV-Ray on User level at a custom location"
+  echo "but this requires additional manual setup steps."
+  echo ""
+  echo "  Type 'R'  to login as root and install in $DEFAULT_DIR"
+  echo "            (recommended method)."
+  echo "  Type 'U'  to make a user level installation at a custom location."
+  echo "  Type anything else to abort."
+  echo ""
+  read -p "Your choice (R/U, default: abort): " -n 1 INPUT
+
+  echo ""
+
+  case $INPUT in
+    "r" | "R")                 # login as root
+      echo ""
+      echo "Enter root password to install in $DEFAULT_DIR:"
+      su -c $0
+      exit
+    ;;
+    "u" | "U")                 # ask for location and continue
+      echo ""
+      echo "Please specify the base directory you want to install in."
+      echo "This directory has to be writable from this user account."
+      echo "You will probably want to speciafy a location in your home"
+      echo "directory (like $HOME/usr):"
+
+      read -p "directory name: " BASEDIR
+
+      echo ""
+
+      BASEDIR=`echo "$BASEDIR" | sed "s?~?$HOME?g"`
+
+      if [ ! -d "$BASEDIR" ] ; then
+        mkdir -p "$BASEDIR"
+      fi
+
+      if [ ! -w "$BASEDIR" ] ; then
+
+        echo ""
+        echo "This directory is not writable, either login as root"
+        echo "or specify a different location."
+        echo ""
+        echo "Installation aborted!"
+        exit
+      fi
+    ;;
+    *)                         # abort
+      echo ""
+      echo "Installation aborted!"
+      exit
+    ;;
+  esac
+else
+  echo "installing POV-Ray in default location ($DEFAULT_DIR)"
+  BASEDIR=$DEFAULT_DIR
+fi
+
+# ==================================================================
+#    Copy files
+# ==================================================================
+
+log_install
+
+echo "------------------------------------------------------"
+echo "Copying files..."
+
+if [ ! -d "$BASEDIR" ] ; then
+  echo "  creating directory $BASEDIR..."
+  mkdir "$BASEDIR"
+fi
+if [ ! -d "$BASEDIR/share" ] ; then
+  echo "  creating directory $BASEDIR/share..."
+  mkdir "$BASEDIR/share"
+fi
+
+echo "  creating supplementary files directory ($BASEDIR/share/$VER_DIR)..."
+
+if [ -d "$BASEDIR/share/$VER_DIR" ] ; then
+  echo "  Directory $BASEDIR/share/$VER_DIR already exists."
+  echo "  Type 'B' to make a backup"
+  echo "  Type 'W' to overwrite current content"
+  echo ""
+  read -p "Your choice ([B]/W): " -n 1 INPUT
+
+  echo ""
+
+  case $INPUT in
+    "w" | "W")
+      echo ""
+      echo "  clearing $BASEDIR/share/$VER_DIR"
+      rm -rf "$BASEDIR/share/$VER_DIR"
+      mkdir "$BASEDIR/share/$VER_DIR"
+
+			log_install "F" "$BASEDIR/share/$VER_DIR"
+    ;;
+    *)
+      echo ""
+      echo "  creating backup of $BASEDIR/share/$VER_DIR"
+      echo "  as $BASEDIR/share/$VER_DIR.bak"
+      rm -rf "$BASEDIR/share/$VER_DIR.bak"
+      mv -f "$BASEDIR/share/$VER_DIR" "$BASEDIR/share/$VER_DIR.bak"
+      mkdir "$BASEDIR/share/$VER_DIR"
+
+	    log_install "B" "$BASEDIR/share/$VER_DIR.bak" "$BASEDIR/share/$VER_DIR"
+    ;;
+  esac
+
+else
+  mkdir "$BASEDIR/share/$VER_DIR"
+
+  log_install "F" "$BASEDIR/share/$VER_DIR"
+fi
+
+echo "  copying include files..."
+cp -r ./include "$BASEDIR/share/$VER_DIR/"
+echo "  copying sample scenes..."
+cp -r ./scenes "$BASEDIR/share/$VER_DIR/"
+echo "  copying ini files..."
+cp -r ./ini "$BASEDIR/share/$VER_DIR/"
+echo "  copying script files..."
+cp -r ./scripts "$BASEDIR/share/$VER_DIR/"
+echo "  copying icon files..."
+cp -r ./icons "$BASEDIR/share/$VER_DIR/"
+
+if [ ! -d "$BASEDIR/man" ] ; then
+  echo "  creating directory $BASEDIR/man..."
+  mkdir "$BASEDIR/man"
+fi
+if [ ! -d "$BASEDIR/man/man1" ] ; then
+  echo "  creating directory $BASEDIR/man/man1..."
+  mkdir "$BASEDIR/man/man1"
+fi
+
+echo "  copying POV-Ray man page..."
+cp -f ./povray.1 "$BASEDIR/man/man1/"
+chmod 644 "$BASEDIR/man/man1/povray.1"
+
+log_install "F" "$BASEDIR/man/man1/povray.1"
+
+if [ ! -d "$BASEDIR/bin" ] ; then
+  echo "  creating directory $BASEDIR/bin..."
+  mkdir "$BASEDIR/bin"
+fi
+
+echo "  copying POV-Ray executable..."
+if [ -f "$BASEDIR/bin/povray" ] ; then
+  echo "    - creating backup from old POV-Ray executable as povray.old.`date +%Y-%m-%d`"
+  mv -f "$BASEDIR/bin/povray" "$BASEDIR/bin/povray.old.`date +%Y-%m-%d`"
+  log_install "B" "$BASEDIR/bin/povray.old.`date +%Y-%m-%d`" "$BASEDIR/bin/povray"
+else
+  log_install "F" "$BASEDIR/bin/povray"
+fi
+cp -f ./povray "$BASEDIR/bin/"
+chmod 755 "$BASEDIR/bin/povray"
+
+
+if [ ! -d "$BASEDIR/share/doc" ] ; then
+  echo "  creating directory $BASEDIR/share/doc..."
+  mkdir "$BASEDIR/share/doc"
+fi
+if [ ! -d "$BASEDIR/share/doc/$VER_DIR" ] ; then
+  echo "  creating directory $BASEDIR/share/doc/$VER_DIR..."
+  mkdir "$BASEDIR/share/doc/$VER_DIR"
+  log_install "F" "$BASEDIR/share/doc/$VER_DIR"
+else
+  echo ""
+  echo "  creating backup of $BASEDIR/share/doc/$VER_DIR"
+  echo "  as $BASEDIR/share/doc/$VER_DIR.bak"
+  rm -rf "$BASEDIR/share/doc/$VER_DIR.bak"
+  mv -f "$BASEDIR/share/doc/$VER_DIR" "$BASEDIR/share/doc/$VER_DIR.bak"
+  mkdir "$BASEDIR/share/doc/$VER_DIR"
+  log_install "B" "$BASEDIR/share/doc/$VER_DIR.bak" "$BASEDIR/share/doc/$VER_DIR"
+fi
+echo "  copying POV-Ray documentation..."
+cp -r -f ./doc/* "$BASEDIR/share/doc/$VER_DIR/"
+
+echo "Finished copying files"
+
+# ==================================================================
+#    Setup configuration files
+# ==================================================================
+
+if [ "$BASEDIR" = "$DEFAULT_DIR" ]; then
+
+  # --- system based installation ---
+
+  INI_MODE=
+  CONF_MODE=
+
+  sys_install "$BASEDIR"
+
+  echo "Finished installing POV-Ray $VERSION"
+  echo "------------------------------------------------------"
+  echo ""
+  echo "This install script can also add some useful entries to"
+  echo "the KDE panel if KDE is installed.  Running:"
+  echo ""
+  echo "  install kde"
+  echo ""
+  echo "as a user will add entries for this user."
+  echo ""
+
+else
+
+  # --- user level installation ---
+
+  INI_MODE=
+  CONF_MODE=
+
+  user_install "$BASEDIR"
+
+  echo "Finished installing POV-Ray $VERSION"
+  echo "The POV-Ray files have been copied to $BASEDIR."
+  echo "------------------------------------------------------"
+  echo ""
+
+  test -z "$KDEHOME" && KDEHOME="$HOME/.kde"
+  if [ -d "$KDEHOME" ] ; then
+    kde_install "$BASEDIR"
+  fi
+
+  echo "For completing the installation of POV-Ray you will have"
+  echo "to set your PATH and MANPATH environment variables to"
+  echo "point to your custom installation location."
+  echo ""
+
+fi
+

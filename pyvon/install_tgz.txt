@@ -1,0 +1,49 @@
+For users with root rights
+**************************
+
+1 - Log as root
+
+2 - Untar the archive in a temp directory :
+tar xzvf pyvon**.tgz
+
+3 - Cd to the pyvon_tmp directory :
+cd pyvon_tmp
+
+4 - Install the program in the /usr/local/directory
+./install.sh
+
+5 - You can start pyvon simply by typing 'pyvon' in a shell
+You can now delete the pyvon_tmp directory
+
+
+
+For User without root rights
+****************************
+
+
+1 - Go to your home directory
+cd ~
+
+2 - Untar the pyvon archive. This will create a sub-directory called
+pyvon_tmp
+tar xzvf pyvon*****.tgz
+
+You have now a newly-created pyvon_tmp directory which contains
+- install.txt(this file)
+- ***.tgz
+- install.sh
+
+3 - Untar the tgz file (ie : if the tgz file is named 'd35.tgz') to
+create a directory called pyvon
+tar xzvf ~/pyvon_tmp/d35.tgz
+
+4 - Goto the pyvon directory.
+cd pyvon
+
+5 - Edit the file res.py and change the line '/usr/local/pyvon/d35.py' to '~/pyvon/d35.py'
+
+6 - Start the application
+./pyvon
+
+
+You can now delete the pyvon_tmp directory
