@@ -1,0 +1,11 @@
+Package: wills-stuff
+Version: 1.0
+Architecture: i386
+Depends: vim (>=2:7.2), python-mysqldb (>=1.2), python-dev (>=2.6),
+ gitk (>=1:1.7), git-core (>=1:1.7), pkgbinarymangler, fakeroot, mysql-client,
+ mysql-server, emacs23
+Section: devel
+Priority: optional
+Installed-Size: 8
+Maintainer: Will Ware <wware@alum.mit.edu>
+Description: A bunch of stuff I like to have on my Ubuntu boxes.

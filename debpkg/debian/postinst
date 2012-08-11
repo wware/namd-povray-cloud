@@ -1,0 +1,14 @@
+#!/bin/sh
+# Post-installation script
+
+(
+cd /home/wware
+for x in emacs gitconfig; do
+    mv dot-${x} .${x}
+    chown -R wware:wware .${x}
+done
+
+cat dot-bashrc >> .bashrc
+rm dot-bashrc
+chown -R wware:wware .bashrc
+)

@@ -1,0 +1,16 @@
+alias hi='history | less'
+
+gitshow() {
+    git show $1 | egrep '^diff' | sed 's#.* b/##'
+}
+
+gitdiff() {
+    git diff $1 | egrep '^diff' | sed 's#.* b/##'
+}
+
+hunt() {
+    less -p "$1" $(git grep -l "$1")
+}
+
+export EDITOR=vim
+
